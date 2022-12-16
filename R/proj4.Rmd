@@ -1,0 +1,327 @@
+---
+title: "Project 4"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+runtime: shiny
+source_code: embed
+---
+
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(wesanderson)
+library(tidyverse)
+library(tidytuesdayR)
+library(ggplot2)
+library(here)
+library(lubridate)
+library(dplyr)
+
+if (!file.exists("data")){
+  dir.create(here("data"))
+}
+
+if(!file.exists(here("data","tuesdata_chocolate.rds"))){
+  tuesdata <- tidytuesdayR::tt_load('2022-01-18')
+  chocolate <- tuesdata$chocolate
+  
+  # save the files to rds objects
+  saveRDS(tuesdata$chocolate, file= here("data","tuesdata_chocolate.rds"))
+} else{
+  chocolate <- readRDS(here("data","tuesdata_chocolate.rds"))
+}
+
+chocolate <- chocolate %>% 
+  filter(!is.na(ingredients))
+chocolate$cocoa_percent <- map(chocolate$cocoa_percent, function(x) str_sub(x,1,nchar(x)-1))
+chocolate$cocoa_percent <- map_int(chocolate$cocoa_percent, function(x) as.integer(x))
+chocolate <- chocolate %>%
+  mutate(country_of_bean_origin = str_to_upper(country_of_bean_origin))
+mean_ratings <- chocolate %>% 
+  group_by(review_date) %>%
+  summarize(mean_rating = mean(rating))
+total_ratings <- chocolate %>% 
+  group_by(review_date) %>%
+  summarize(total_rating = n())
+
+```
+
+
+About
+===
+
+This tidytuesday dataset is about chocolate bar ratings. I want to analyze the distribution of the ratings over time and factors that affect ratings. The data and dictionary are available here: <https://github.com/rfordatascience/tidytuesday/blob/master/data/2022/2022-01-18/readme.md>
+
+If you cannot view the embedded video, it is also accessible here: https://youtu.be/zX1fTT3yM8w
+
+```{r}
+
+library(vembedr)
+embed_url("https://youtu.be/zX1fTT3yM8w") %>%
+  div(class = "vembedr") %>%
+  div(align = "center")
+
+```
+
+The Data
+===
+
+```{r, echo=FALSE}
+# Create the DT table first
+DT_table <- chocolate %>%
+  dplyr::select(company_manufacturer,
+                company_location,
+                review_date,
+                country_of_bean_origin,
+                cocoa_percent,
+                most_memorable_characteristics,
+                rating)
+# Instead of depending on the st_jitter algorithm to generate random placement, a custom function placing the points side by side at a set distance could be used to make points occuring at the same location appear neatly apart.
+```
+
+```{r, echo=FALSE}
+DT::renderDataTable({
+  DT::datatable(DT_table,
+                caption = htmltools::tags$caption(
+                  style = 'caption-side: top; text-align: Left;',
+                  htmltools::withTags(
+                    div(HTML('<a href="https://github.com/rfordatascience/tidytuesday/blob/master/data/2022/2022-01-18/readme.md">Click here to be redirected to a page where this data can be downloaded.</a>')))),
+                options = list(autoWidth = TRUE,
+                               pageLength = 10,
+                               scroller = TRUE,
+                               scrollY = '450px'))
+})
+```
+
+
+Static: Maps
+===
+
+Column {.tabset}
+-------------------------------------
+   
+### Bean Origin
+
+```{r}
+
+#adapted from https://statsandr.com/blog/world-map-of-visited-countries-in-r/
+
+library(highcharter)
+library(dplyr)
+library(maps)
+
+dat <- iso3166
+dat <- rename(dat, "iso-a3" = a3)
+
+bean_origin_countries <- unique(tolower(chocolate$country_of_bean_origin))
+#change some to mapname
+bean_origin_countries[bean_origin_countries == "u.s.a."] <- "usa" 
+bean_origin_countries[bean_origin_countries == "sao tome"] <- "sao tome and principe"
+bean_origin_countries[bean_origin_countries == "congo"] <- "republic of congo"
+bean_origin_countries[bean_origin_countries == "st. lucia"] <- "saint lucia"
+bean_origin_countries[bean_origin_countries == "st. vincent-grenadines"] <- "saint vincent"
+bean_origin_countries[bean_origin_countries == "sao tome & principe"] <- "sao tome and principe"
+bean_origin_countries[bean_origin_countries == "dr congo"] <- "democratic republic of the congo"
+
+#match on lower case 
+dat$mapname <- tolower(dat$mapname)
+dat$visited <- ifelse(dat$`mapname` %in% bean_origin_countries, 1, 0)
+
+hcmap(
+  map = "custom/world-highres3", # high resolution world map
+  data = dat, # name of dataset
+  joinBy = "iso-a3",
+  value = "visited",
+  showInLegend = FALSE, # hide legend
+  nullColor = "#DADADA",
+  download_map_data = TRUE
+) %>%
+  hc_mapNavigation(enabled = FALSE) %>%
+  hc_legend("none") %>%
+  hc_title(text = "Countries of Bean Origin") # title
+
+dat <- subset(dat, dat$visited == 1)
+sort(dat$ISOname) # sort is to have the visited countries in alphabetical order
+
+
+
+```   
+ 
+### Company Location
+
+```{r}
+
+#adapted from https://statsandr.com/blog/world-map-of-visited-countries-in-r/
+
+library(highcharter)
+library(dplyr)
+library(maps)
+
+dat <- iso3166
+dat <- rename(dat, "iso-a3" = a3)
+
+company_countries <- unique(tolower(chocolate$company_location))
+#change some to mapname
+company_countries[company_countries == "u.s.a."] <- "usa" 
+company_countries[company_countries == "u.k."] <- "uk(?!r)" 
+company_countries[company_countries == "sao tome"] <- "sao tome and principe"
+company_countries[company_countries == "st. lucia"] <- "saint lucia"
+company_countries[company_countries == "st. vincent-grenadines"] <- "saint vincent"
+company_countries[company_countries == "sao tome & principe"] <- "sao tome and principe"
+company_countries[company_countries == "u.a.e."] <- "united arab emirates"
+
+#match on lower case 
+dat$mapname <- tolower(dat$mapname)
+dat$visited <- ifelse(dat$`mapname` %in% company_countries, 1, 0)
+
+hcmap(
+  map = "custom/world-highres3", # high resolution world map
+  data = dat, # name of dataset
+  joinBy = "iso-a3",
+  value = "visited",
+  showInLegend = FALSE, # hide legend
+  nullColor = "#DADADA",
+  download_map_data = TRUE
+) %>%
+  hc_mapNavigation(enabled = FALSE) %>%
+  hc_legend("none") %>%
+  hc_title(text = "Countries of Companies") # title
+
+dat <- subset(dat, dat$visited == 1)
+sort(dat$ISOname) # sort is to have the visited countries in alphabetical order
+
+```   
+
+Static: Cocoa Percent
+===
+
+```{r}
+
+mean_cocoa <- chocolate %>% 
+  group_by(review_date) %>%
+  summarize(mean_rating = mean(cocoa_percent))
+
+
+ggplot(data = mean_cocoa, aes(x=review_date, y=mean_rating)) +
+  geom_point() +
+  ylim(c(65,75)) +
+  labs(title = "Mean Cocoa Percent over Time", subtitle = "cocoa content stays relatively constant around 71%") +
+  xlab("Year") + ylab("Mean Cocoa Percent") +
+  theme_bw()
+
+```
+
+Interactive: Cocoa Percent
+===
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+Distribution of Cocoa Percent for this dataset
+
+```{r}
+selectInput("n_breaks", label = "Number of bins:",
+            choices = c(4, 6, 8, 10), selected = 5)
+
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Distribution of Cocoa Percent
+
+```{r}
+renderPlot({
+  hist(chocolate$cocoa_percent, probability = TRUE, breaks = as.numeric(input$n_breaks),
+       xlab = "Cocoa Percent", main = "Distribution of Cocoa Percent")
+
+})
+```
+
+Interactive: Boxplots
+===
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+To see how rating varies by different factors
+
+```{r}
+selectInput("variable", "Variable:",
+                  c("Year of Review" = "review_date",
+                    "Cocoa Percent" = "cocoa_percent"))
+checkboxInput("outliers", "Show outliers", TRUE)
+```
+
+Column
+-----------------------------------------------------------------------
+
+
+```{r}
+formulaText <- reactive({
+    paste("rating ~", input$variable)
+  })
+
+renderPlot({
+    boxplot(as.formula(formulaText()),
+            data = chocolate,
+            outline = input$outliers,
+            col = "#75AADB", pch = 19, main=formulaText())
+  })
+```
+
+
+Analysis
+===
+
+Column
+-----------------------------------------------------------------------
+
+
+```{r, eval=TRUE, message=FALSE}
+  
+ggplot(data = mean_ratings, aes(x=review_date, y=mean_rating)) +
+  geom_point() +
+  ylim(c(0,5)) +
+  labs(title = "Mean Rating over Time", subtitle = "ratings stay relatively constant around 3-3.5", caption = "Figure 1") +
+  xlab("Year") + ylab("Mean Rating") +
+  theme_bw()
+```
+
+Column
+-----------------------------------------------------------------------
+
+
+```{r, eval=TRUE, message=FALSE}
+  
+pal <- wes_palette("Royal1")
+ggplot(data = total_ratings, aes(x=review_date, y=total_rating)) +
+  geom_point() +
+  geom_line(color=rep(pal,4)) +
+  ylim(c(0,300)) +
+  labs(title = "Total Ratings per Year over Time", subtitle = "ratings fluctuate over time, peaking in 2015", caption = "Figure 2") +
+  xlab("Year") + ylab("Number of Ratings") +
+  theme_bw()
+```
+
+Column
+-----------------------------------------------------------------------
+
+
+```{r, eval=TRUE, message=FALSE}
+pal <- wes_palette("Darjeeling1")
+ggplot(chocolate, aes(x = rating, fill = review_date)) + 
+  geom_density() + 
+  facet_wrap(~ review_date) + 
+  theme_bw() +
+  labs(title = "Rating Density over Time", subtitle = "this plot shows the variation in reviews across years", caption = "Figure 3") +
+  xlab("Rating") + ylab("Density") +
+  theme(legend.position="none",
+      strip.background=element_rect(color=pal[5],
+                                    fill=pal[3]))
+```
+
+
+
